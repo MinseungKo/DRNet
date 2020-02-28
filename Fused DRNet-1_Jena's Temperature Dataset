@@ -1,0 +1,261 @@
+import pandas as pd
+import tensorflow as tf
+import codecs
+import numpy as np
+import math
+import csv
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import recall_score, precision_score # New
+from sklearn.metrics import f1_score
+from sklearn.metrics import confusion_matrix
+from sklearn import preprocessing
+import keras
+import matplotlib.pyplot as plt
+from keras.callbacks import ModelCheckpoint, CSVLogger, EarlyStopping, LearningRateScheduler, ReduceLROnPlateau
+from keras.layers import merge
+from keras.models import Sequential, Model
+from keras.layers import Dense, Input, Flatten, Add
+from keras.layers import Activation, BatchNormalization, regularizers
+from keras.layers.convolutional import Conv1D
+from keras.layers.convolutional import MaxPooling1D
+from keras.layers.merge import concatenate
+from keras.layers import LSTM, Bidirectional
+from keras.utils import plot_model
+from keras.layers import Dropout
+from scipy import signal
+import openpyxl
+
+from keras.backend import tensorflow_backend as K
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+K.set_session(tf.Session(config=config))
+
+class LossHistory(keras.callbacks.Callback):  # history = LossHistory()
+    def init(self):  # history.init()
+        self.losses = []
+        # self.accs = []
+        self.val_losses = []
+        # self.val_accs = []
+        self.mses = []
+        self.maes = []
+        self.mapes = []
+        self.val_mses = []
+        self.val_maes = []
+        self.val_mapes = []
+
+    def on_epoch_end(self, batch, logs={}):
+        self.losses.append(logs.get('loss'))
+        # self.accs.append(logs.get('acc'))
+        self.val_losses.append(logs.get('val_loss'))
+        # self.val_accs.append(logs.get('val_accuracy
+        self.mses.append(logs.get('mean_squared_error'))
+        self.maes.append(logs.get('mean_absolute_error'))
+        self.mapes.append(logs.get('mean_absolute_percentage_error'))
+        self.val_mses.append(logs.get('val_mean_squared_error'))
+        self.val_maes.append(logs.get('val_mean_absolute_error'))
+        self.val_mapes.append(logs.get('val_mean_absolute_percentage_error'))
+
+def create_dataset(dataset, timesteps):
+    dataX, dataY = [], []
+    for i in range(len(dataset) - timesteps - 1):
+        a = dataset[i:(i + timesteps), 0]
+        dataX.append(a)
+        dataY.append(dataset[i + timesteps, 0])
+    return np.array(dataX), np.array(dataY)
+
+def mean_absolute_percentage_error(y_true, y_pred):
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+
+data_path = 'C:/Users/Smartgrid_ML/Desktop/KMS/climate_hour.csv'
+data_source = pd.read_csv(data_path)
+data_source = pd.DataFrame(data_source)
+data_set = data_source.iloc[:, 2]
+data = np.array(data_set)
+data = data.reshape(-1, 1)
+scaler = MinMaxScaler(feature_range=(0, 1))
+data = scaler.fit_transform(data)
+Maxvalue_1 = scaler.data_max_
+print(data.shape)
+
+Tr_mean = np.nanmean(data)
+Tr_var = np.nanvar(data)
+
+print('Dataset mean = ', Tr_mean, 'var = ', Tr_var)
+print('Maximum value = ', Maxvalue_1)
+
+Training_set = data[0:42022, :]
+Validation_set = data[42023:63031, :]
+Test_set = data[63032:, :]
+
+features = 1
+timesteps = 24
+trainX, trainY = create_dataset(Training_set, timesteps)
+validX, validY = create_dataset(Validation_set, timesteps)
+testX, testY = create_dataset(Test_set, timesteps)
+
+trainX = np.reshape(trainX, (trainX.shape[0], trainX.shape[1], 1))
+validX = np.reshape(validX, (validX.shape[0], validX.shape[1], 1))
+testX = np.reshape(testX, (testX.shape[0], testX.shape[1], 1))
+
+# -----------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------
+import keras.backend.tensorflow_backend as K
+with K.tf.device('/gpu:0'):
+    visible1 = Input(shape=(timesteps, features))
+    con10 = Conv1D(filters=32, kernel_size=1, strides=1, padding='same')(visible1)
+    con10 = Activation('selu')(con10)
+
+    bi11 = (Bidirectional(LSTM(16, return_sequences=True)))(visible1)
+    bi12 = (Bidirectional(LSTM(16, return_sequences=True)))(bi11)
+    con11 = Conv1D(filters=32, kernel_size=1, strides=1, padding='same')(bi12)
+    con11 = Activation('selu')(con11)
+    res13 = keras.layers.Concatenate()([bi12, con11, visible1])
+    con20 = Conv1D(filters=32, kernel_size=1, strides=1, padding='same')(res13)
+    con20 = Activation('selu')(con20)
+
+    bi211 = (Bidirectional(LSTM(64, return_sequences=True)))(visible1)
+    bi212 = (Bidirectional(LSTM(64, return_sequences=True)))(bi211)
+    con211 = Conv1D(filters=128, kernel_size=1, strides=1, padding='same')(bi212)
+    con211 = Activation('selu')(con211)
+    res213 = keras.layers.Concatenate()([bi212, con211, visible1])
+    con220 = Conv1D(filters=128, kernel_size=1, strides=1, padding='same')(res213)
+    con220 = Activation('selu')(con220)
+
+    fus1 = keras.layers.Concatenate()([res13, res213])
+
+    bi13 = (Bidirectional(LSTM(16, return_sequences=True)))(fus1)
+    bi14 = (Bidirectional(LSTM(16, return_sequences=True)))(bi13)
+    con12 = Conv1D(filters=32, kernel_size=1, strides=1, padding='same')(bi14)
+    con12 = Activation('selu')(con12)
+    res14 = keras.layers.Concatenate()([res13, bi14, con12, visible1])
+    con21 = Conv1D(filters=32, kernel_size=1, strides=1, padding='same')(res14)
+    con21 = Activation('selu')(con21)
+
+    bi213 = (Bidirectional(LSTM(64, return_sequences=True)))(fus1)
+    bi214 = (Bidirectional(LSTM(64, return_sequences=True)))(bi213)
+    con212 = Conv1D(filters=128, kernel_size=1, strides=1, padding='same')(bi214)
+    con212 = Activation('selu')(con212)
+    res214 = keras.layers.Concatenate()([res213, bi214, con212, visible1])
+    con221 = Conv1D(filters=128, kernel_size=1, strides=1, padding='same')(res214)
+    con221 = Activation('selu')(con221)
+
+    fus2 = keras.layers.Concatenate()([res14, res214])
+
+    bi15 = (Bidirectional(LSTM(16, return_sequences=True)))(fus2)
+    bi16 = (Bidirectional(LSTM(16, return_sequences=True)))(bi15)
+    con13 = Conv1D(filters=32, kernel_size=1, strides=1, padding='same')(bi16)
+    con13 = Activation('selu')(con13)
+    res15 = keras.layers.Concatenate()([res14, bi16, con13, visible1])
+    con22 = Conv1D(filters=32, kernel_size=1, strides=1, padding='same')(res15)
+    con22 = Activation('selu')(con22)
+
+    bi215 = (Bidirectional(LSTM(64, return_sequences=True)))(fus2)
+    bi216 = (Bidirectional(LSTM(64, return_sequences=True)))(bi215)
+    con213 = Conv1D(filters=128, kernel_size=1, strides=1, padding='same')(bi216)
+    con213 = Activation('selu')(con213)
+    res215 = keras.layers.Concatenate()([res214, bi216, con213, visible1])
+    con222 = Conv1D(filters=128, kernel_size=1, strides=1, padding='same')(res215)
+    con222 = Activation('selu')(con222)
+
+    fus3 = keras.layers.Concatenate()([res15, res215])
+
+    bi17 = (Bidirectional(LSTM(16, return_sequences=True)))(fus3)
+    bi18 = (Bidirectional(LSTM(16, return_sequences=True)))(bi17)
+    con14 = Conv1D(filters=32, kernel_size=1, strides=1, padding='same')(bi18)
+    con14 = Activation('selu')(con14)
+    res16 = keras.layers.Concatenate()([res15, bi18, con14, visible1])
+    con23 = Conv1D(filters=32, kernel_size=1, strides=1, padding='same')(res16)
+    con23 = Activation('selu')(con23)
+
+    bi217 = (Bidirectional(LSTM(64, return_sequences=True)))(fus3)
+    bi218 = (Bidirectional(LSTM(64, return_sequences=True)))(bi217)
+    con214 = Conv1D(filters=128, kernel_size=1, strides=1, padding='same')(bi218)
+    con214 = Activation('selu')(con214)
+    res216 = keras.layers.Concatenate()([res215, bi218, con214, visible1])
+    con223 = Conv1D(filters=128, kernel_size=1, strides=1, padding='same')(res216)
+    con223 = Activation('selu')(con223)
+
+    fus4 = keras.layers.Concatenate()([res16, res216])
+
+    bi19 = (Bidirectional(LSTM(16, return_sequences=True)))(fus4)
+    bi20 = (Bidirectional(LSTM(16, return_sequences=True)))(bi19)
+    con15 = Conv1D(filters=32, kernel_size=1, strides=1, padding='same')(bi20)
+    con15 = Activation('selu')(con15)
+    res17 = keras.layers.Concatenate()([res16, bi20, con15, visible1])
+
+    bi219 = (Bidirectional(LSTM(64, return_sequences=True)))(fus4)
+    bi220 = (Bidirectional(LSTM(64, return_sequences=True)))(bi219)
+    con215 = Conv1D(filters=128, kernel_size=1, strides=1, padding='same')(bi220)
+    con215 = Activation('selu')(con215)
+    res217 = keras.layers.Concatenate()([res216, bi220, con215, visible1])
+
+    addi = keras.layers.Concatenate()([res17, res217])
+
+    bi21 = (Bidirectional(LSTM(128)))(addi)
+
+    dense11 = Dense(24, activation='selu')(bi21)
+    out1 = Dense(1, activation='selu')(dense11)
+
+    model = Model(inputs=[visible1], outputs=[out1])  # multi-input, multi-output
+
+#########################################
+
+print(model.summary())
+
+reducelr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=1)  # 에포크 1동안 좋아지지 않으면 호출
+
+model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mse', 'mae', 'mape'])
+
+batch_size = 100
+epochs = 20
+
+history = LossHistory()
+history.init()
+
+model.fit(trainX, trainY, epochs=epochs, batch_size=batch_size, shuffle=False, validation_data=(validX, validY), callbacks=[history, reducelr])  # , checkpoint
+
+trainPredict = model.predict(trainX, batch_size=batch_size)
+validPredict = model.predict(validX, batch_size=batch_size)
+testPredict = model.predict(testX, batch_size=batch_size)
+
+trainPredict = trainPredict.reshape([-1])
+validPredict = validPredict.reshape([-1])
+testPredict = testPredict.reshape([-1])
+testY = testY.reshape([-1])
+validY = validY.reshape([-1])
+trainY = trainY.reshape([-1])
+
+np.savetxt('trainPredict_5.txt', trainPredict)
+np.savetxt('testPredict_5.txt', testPredict)
+np.savetxt('validPredict_5.txt', validPredict)
+np.savetxt('testY_5.txt', testY)
+np.savetxt('validY_5.txt', validY)
+np.savetxt('trainY_5.txt', trainY)
+
+print('--------------------------------------------------------')
+print(' history.mses(=loss) = ', history.mses)  # loss == mse
+print(' history.maes        = ', history.maes)
+print(' history.mapes        = ', history.mapes)
+print(' history.val_mses(=loss)= ', history.val_mses)  # loss == mse
+print(' history.val_maes       = ', history.val_maes)
+print(' history.val_mapes       = ', history.val_mapes)
+print('--------------------------------------------------------')
+
+plt.figure(1)
+plt.plot(testPredict, 'r')
+plt.plot(testY, 'b')
+plt.show()
+
+plt.figure(2)
+plt.plot(history.mses, 'b--')
+plt.plot(history.val_mses, 'b:')
+plt.plot(history.maes, 'ro')
+plt.plot(history.val_maes, 'r+')
+plt.ylabel('Loss and Accuracy')
+plt.xlabel('epoch')
+plt.show()
+
+print('Test Score > MSE == ', mean_squared_error(testY, testPredict), ' MAE == ', mean_absolute_error(testY, testPredict), 'MAPE == ', mean_absolute_percentage_error(testY, testPredict))
