@@ -3,8 +3,8 @@ Codes for "Deep Concatenated Residual Network with Bidirectional LSTM for Short-
 
 <Datset>
 
-ERCOT Wind Power Dataset : ercot_2016.xlsx, ercot_2017.xlsx, ercot_2018.xlsx
-Jena's Temperature Dataset : climate_hour.csv
+ERCOT Wind Power Dataset can be downloaded from http://www.ercot.com/gridinfo/generation
+Jena's Temperature Dataset can be downloaded from https://www.kaggle.com/stytch16/jena-climate-2009-2016
 
 
 <Experiments>
