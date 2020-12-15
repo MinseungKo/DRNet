@@ -1,5 +1,5 @@
 # DRNet
-Codes for "Deep Concatenated Residual Network with Bidirectional LSTM for One-Hour-Ahead Wind Power Forecasting"  for Publication in IEEE Transactions on Sustainable Energy, 
+Codes for "Deep Concatenated Residual Network with Bidirectional LSTM for One-Hour-Ahead Wind Power Forecasting" in IEEE Transactions on Sustainable Energy.
 
 ### Authors
 Min-seung Ko, Kwangsuk Lee, Jae-Kyeong Kim, Chang Woo Hong, Zhao Yang Dong, and Kyeon Hur
